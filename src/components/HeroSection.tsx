@@ -14,39 +14,33 @@ export default function HeroSection() {
         </h1>
 
         <p className="text-xl text-white/60 mb-10 max-w-2xl mx-auto leading-relaxed">
-          Upload your resume, paste a LinkedIn or GitHub URL, and get
-          high-impact presentation slides in seconds. No design skills needed.
+          Upload your resume, paste a LinkedIn URL, and get high-impact
+          presentation slides in seconds. No design skills needed.
         </p>
 
-        {/* How it works */}
+        {/* Make this App yours */}
         <div
-          id="how-it-works"
+          id="make-this-yours"
           className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl mx-auto mb-12"
         >
           {[
             {
-              step: "1",
-              icon: "📄",
-              title: "Add your content",
-              desc: "Upload a resume or paste a public profile URL",
+              icon: "🎯",
+              title: "Pick your goal",
+              desc: "Job seeker, student, entrepreneur — we tailor the story to your intent",
             },
             {
-              step: "2",
               icon: "✨",
               title: "AI does the work",
-              desc: "We extract the best points and structure your story",
+              desc: "We extract the best points and structure your narrative automatically",
             },
             {
-              step: "3",
               icon: "🚀",
               title: "Present with impact",
               desc: "Share, download, or present directly from your browser",
             },
           ].map((item) => (
-            <div
-              key={item.step}
-              className="glass rounded-xl p-4 text-left"
-            >
+            <div key={item.title} className="glass rounded-xl p-4 text-left">
               <div className="text-2xl mb-2">{item.icon}</div>
               <div className="font-medium text-white text-sm mb-1">
                 {item.title}

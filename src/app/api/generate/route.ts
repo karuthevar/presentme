@@ -18,6 +18,7 @@ export async function POST(req: NextRequest) {
       customIntent,
       sourceType,
       sourceUrl,
+      contextUrls,
       rawText,
       fileBase64,
       fileType,
@@ -61,6 +62,25 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Step 1b: Scrape any additional context URLs (e.g. job description)
+    if (contextUrls && contextUrls.length > 0) {
+      const contextParts = await Promise.all(
+        contextUrls
+          .filter((u) => u && u.trim())
+          .map(async (url) => {
+            const scraped = await scrapeUrl(url);
+            if (scraped.success && scraped.text) {
+              return `--- Context from ${scraped.platform} (${url}) ---\nTitle: ${scraped.title}\n${scraped.text}`;
+            }
+            return null;
+          })
+      );
+      const validContext = contextParts.filter(Boolean).join("\n\n");
+      if (validContext) {
+        sourceContent = `${sourceContent}\n\n=== ADDITIONAL CONTEXT ===\n${validContext}`;
+      }
+    }
+
     // Step 2: Generate slides via AI
     const input: SlideGenerationInput = {
       intent,
@@ -70,6 +90,7 @@ export async function POST(req: NextRequest) {
       sourceType,
       sourceContent,
       sourceUrl,
+      contextUrls,
       photoBase64,
       contact,
       references,

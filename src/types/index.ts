@@ -53,6 +53,7 @@ export interface SlideGenerationInput {
   sourceType: "file" | "url" | "text";
   sourceContent: string; // raw extracted text
   sourceUrl?: string;
+  contextUrls?: string[]; // additional URLs for context (e.g. job description)
   photoBase64?: string; // base64 encoded photo
   contact: ContactInfo;
   references?: Reference[];
@@ -95,6 +96,7 @@ export interface GenerateRequest {
   customIntent?: string;
   sourceType: "file" | "url" | "text";
   sourceUrl?: string;
+  contextUrls?: string[]; // additional URLs for context (e.g. job description)
   rawText?: string;
   fileBase64?: string;
   fileType?: string;

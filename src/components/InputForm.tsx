@@ -25,15 +25,43 @@ import {
 import { cn, INTENT_LABELS, INTENT_DESCRIPTIONS, PRESENTATION_TYPE_LABELS, PRESENTATION_TYPE_DESCRIPTIONS, PRESENTATION_TYPE_ICONS, AUDIENCE_LABELS, AUDIENCE_DESCRIPTIONS, AUDIENCE_ICONS, isValidUrl } from "@/lib/utils";
 import type { GenerateRequest, Intent, PresentationType, TargetAudience, ContactInfo, Reference } from "@/types";
 
+const CONTEXT_URL_PLACEHOLDERS: Partial<Record<Intent, string>> = {
+  job_seeker: "https://jobs.company.com/senior-engineer-123",
+  student: "https://university.edu/program/cs",
+  project_showcase: "https://github.com/org/project",
+  entrepreneur: "https://techcrunch.com/article-about-market",
+  speaker: "https://conference.com/cfp",
+  general: "https://...",
+};
+
+const CONTEXT_URL_DESCRIPTIONS: Partial<Record<Intent, string>> = {
+  job_seeker: "Paste the job description URL so slides align with the role",
+  student: "Add a program page, research paper, or internship posting",
+  project_showcase: "Link to a GitHub repo, case study, or product page",
+  entrepreneur: "Add a market report, competitor page, or investor brief",
+  speaker: "Link to the event page, CFP, or topic brief",
+  general: "Add URLs for extra context the AI should consider",
+};
+
+const CONTEXT_URL_EXAMPLES: Partial<Record<Intent, string[]>> = {
+  job_seeker: ["Job posting", "Company about page", "Team page"],
+  student: ["Program page", "Research paper", "Internship listing"],
+  project_showcase: ["GitHub repo", "Live demo", "Case study"],
+  entrepreneur: ["Market report", "Competitor site", "Press coverage"],
+  speaker: ["Event page", "CFP brief", "Past talk recording"],
+  general: ["Any public page"],
+};
+
 interface Props {
   onGenerate: (data: GenerateRequest) => void;
   isGenerating: boolean;
   error: string | null;
+  needsAuth?: boolean;
 }
 
 type SourceTab = "file" | "url" | "text";
 
-export default function InputForm({ onGenerate, isGenerating, error }: Props) {
+export default function InputForm({ onGenerate, isGenerating, error, needsAuth }: Props) {
   const [sourceTab, setSourceTab] = useState<SourceTab>("file");
   const [intent, setIntent] = useState<Intent>("job_seeker");
   const [presentationType, setPresentationType] = useState<PresentationType>("portfolio");
@@ -53,6 +81,8 @@ export default function InputForm({ onGenerate, isGenerating, error }: Props) {
   const [references, setReferences] = useState<Reference[]>([]);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [urlError, setUrlError] = useState("");
+  const [contextUrls, setContextUrls] = useState<string[]>([""]);
+  const [showContextUrls, setShowContextUrls] = useState(false);
 
   // File dropzone
   const onDrop = useCallback((acceptedFiles: File[]) => {
@@ -105,6 +135,18 @@ export default function InputForm({ onGenerate, isGenerating, error }: Props) {
     setContact((prev) => ({ ...prev, [key]: value || undefined }));
   }
 
+  function addContextUrl() {
+    setContextUrls((prev) => [...prev, ""]);
+  }
+
+  function updateContextUrl(index: number, value: string) {
+    setContextUrls((prev) => prev.map((u, i) => (i === index ? value : u)));
+  }
+
+  function removeContextUrl(index: number) {
+    setContextUrls((prev) => prev.filter((_, i) => i !== index));
+  }
+
   function addReference() {
     setReferences((prev) => [...prev, { name: "", title: "", url: "" }]);
   }
@@ -152,6 +194,7 @@ export default function InputForm({ onGenerate, isGenerating, error }: Props) {
       references: references.filter((r) => r.name.trim()),
       name: name || undefined,
       tagline: tagline || undefined,
+      contextUrls: contextUrls.filter((u) => u.trim() && isValidUrl(u.trim())),
     };
 
     onGenerate(data);
@@ -549,6 +592,81 @@ export default function InputForm({ onGenerate, isGenerating, error }: Props) {
         </div>
       </div>
 
+      {/* Context URLs */}
+      <div className="glass rounded-2xl overflow-hidden">
+        <button
+          onClick={() => setShowContextUrls(!showContextUrls)}
+          className="w-full flex items-center justify-between p-6 text-left hover:bg-white/5 transition-colors"
+        >
+          <div>
+            <h2 className="text-white font-semibold text-lg flex items-center gap-2">
+              Context URLs
+              <span className="text-xs font-normal px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                optional
+              </span>
+            </h2>
+            <p className="text-white/50 text-sm mt-0.5">
+              {CONTEXT_URL_DESCRIPTIONS[intent] ?? "Add URLs for extra context the AI should consider"}
+            </p>
+          </div>
+          {showContextUrls ? (
+            <ChevronUp size={18} className="text-white/40 flex-shrink-0" />
+          ) : (
+            <ChevronDown size={18} className="text-white/40 flex-shrink-0" />
+          )}
+        </button>
+
+        {showContextUrls && (
+          <div className="px-6 pb-6 space-y-3">
+            <div className="flex flex-wrap gap-2 mb-1">
+              {CONTEXT_URL_EXAMPLES[intent]?.map((ex) => (
+                <span
+                  key={ex}
+                  className="px-2 py-1 rounded-md bg-white/5 text-white/40 text-xs border border-white/10"
+                >
+                  {ex}
+                </span>
+              ))}
+            </div>
+            {contextUrls.map((url, i) => (
+              <div key={i} className="flex gap-2">
+                <div className="relative flex-1">
+                  <Link
+                    size={13}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30"
+                  />
+                  <input
+                    type="url"
+                    value={url}
+                    onChange={(e) => updateContextUrl(i, e.target.value)}
+                    placeholder={CONTEXT_URL_PLACEHOLDERS[intent] ?? "https://..."}
+                    className="w-full bg-white/5 border border-white/10 rounded-lg pl-8 pr-3 py-2 text-white text-sm placeholder:text-white/30 focus:outline-none focus:border-indigo-500/50 transition-colors"
+                  />
+                </div>
+                {contextUrls.length > 1 && (
+                  <button
+                    onClick={() => removeContextUrl(i)}
+                    className="p-2 text-white/30 hover:text-red-400 transition-colors"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                )}
+              </div>
+            ))}
+            <button
+              onClick={addContextUrl}
+              className="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 text-sm transition-colors"
+            >
+              <Plus size={16} />
+              Add another URL
+            </button>
+            <p className="text-white/25 text-xs">
+              These pages will be scraped and their content used to tailor your slides. Works best with public pages.
+            </p>
+          </div>
+        )}
+      </div>
+
       {/* References — collapsible */}
       <div className="glass rounded-2xl overflow-hidden">
         <button
@@ -636,10 +754,12 @@ export default function InputForm({ onGenerate, isGenerating, error }: Props) {
       {/* Submit */}
       <button
         onClick={validateAndSubmit}
-        disabled={!canSubmit}
+        disabled={!canSubmit && !needsAuth}
         className={cn(
           "w-full py-4 rounded-xl font-semibold text-lg transition-all duration-200 flex items-center justify-center gap-3",
-          canSubmit
+          needsAuth
+            ? "bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white shadow-lg shadow-indigo-500/25"
+            : canSubmit
             ? "bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 hover:scale-[1.01]"
             : "bg-white/10 text-white/30 cursor-not-allowed"
         )}
@@ -649,10 +769,10 @@ export default function InputForm({ onGenerate, isGenerating, error }: Props) {
             <Loader2 size={20} className="animate-spin" />
             Generating your slides...
           </>
+        ) : needsAuth ? (
+          <>🔒 Sign in to Generate</>
         ) : (
-          <>
-            ✨ Generate Slides
-          </>
+          <>✨ Generate Slides</>
         )}
       </button>
 
