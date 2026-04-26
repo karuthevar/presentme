@@ -1,12 +1,8 @@
-import OpenAI from "openai";
 import type { SlideGenerationInput, GeneratedPresentation, Slide } from "@/types";
 import { generateId } from "./utils";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
-const MODEL = process.env.OPENAI_MODEL || "gpt-4o";
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
 
 const INTENT_PROMPTS: Record<string, string> = {
   job_seeker: `Focus on: quantified work achievements, key skills with proficiency, career progression, notable projects with business impact, and what makes this candidate stand out. Use action verbs and numbers wherever possible.`,
@@ -44,6 +40,10 @@ const AUDIENCE_PROMPTS: Record<string, string> = {
 export async function generateSlides(
   input: SlideGenerationInput
 ): Promise<GeneratedPresentation> {
+  if (!GEMINI_API_KEY) {
+    throw new Error("GEMINI_API_KEY is not set");
+  }
+
   const intentPrompt = INTENT_PROMPTS[input.intent] || INTENT_PROMPTS.general;
   const presentationTypePrompt =
     PRESENTATION_TYPE_PROMPTS[input.presentationType] ||
@@ -54,7 +54,7 @@ export async function generateSlides(
     ? `\nAdditional context from the user: "${input.customIntent}"`
     : "";
 
-  const systemPrompt = [
+  const prompt = [
     `You are an expert presentation designer and communication strategist. Your job is to transform raw profile content into high-impact, punchy presentation slides tailored to a specific audience and presentation format.`,
     ``,
     `**Presenter profile type:** ${input.intent.replace(/_/g, " ")}`,
@@ -72,10 +72,25 @@ export async function generateSlides(
     `- No filler words ("responsible for", "helped with", "worked on") — use strong action verbs`,
     `- Each slide should have 3-5 bullets maximum — quality over quantity`,
     `- Bullets should be standalone statements that hit hard even without context`,
-    `- Adapt vocabulary, depth, and framing to the target audience — the same fact lands differently for investors vs. academics vs. customers`,
+    `- Adapt vocabulary, depth, and framing to the target audience`,
     `- The presentation format dictates the narrative structure — follow it`,
     ``,
-    `Return ONLY valid JSON matching this exact structure:`,
+    `Here is the profile content to transform into slides:`,
+    ``,
+    `---`,
+    input.sourceContent,
+    `---`,
+    ``,
+    `Contact info available:`,
+    JSON.stringify(input.contact, null, 2),
+    ``,
+    input.references?.length
+      ? `References:\n${JSON.stringify(input.references, null, 2)}`
+      : "",
+    input.name ? `Name hint: ${input.name}` : "",
+    input.tagline ? `Tagline hint: ${input.tagline}` : "",
+    ``,
+    `Return ONLY valid JSON (no markdown, no code fences) matching this exact structure:`,
     `{`,
     `  "name": "Full Name",`,
     `  "tagline": "One powerful tagline (max 10 words)",`,
@@ -94,53 +109,55 @@ export async function generateSlides(
     `  ]`,
     `}`,
     ``,
-    `Slide order should be: cover → summary → [relevant content slides] → contact`,
+    `Slide order: cover → summary → [relevant content slides] → contact`,
     `Always include a cover slide and a contact slide.`,
     `The summary slide should have 3-4 "highlights" (key stats/facts) and 2-3 bullets.`,
     `Skills slide should use "tags" array.`,
     `Experience/projects slides should use "bullets" array.`,
-  ].join("\n");
-
-  const userPrompt = [
-    `Here is the profile content to transform into slides:`,
-    ``,
-    `---`,
-    input.sourceContent,
-    `---`,
-    ``,
-    `Contact info available:`,
-    JSON.stringify(input.contact, null, 2),
-    ``,
-    input.references?.length
-      ? `References:\n${JSON.stringify(input.references, null, 2)}`
-      : "",
-    input.name ? `Name hint: ${input.name}` : "",
-    input.tagline ? `Tagline hint: ${input.tagline}` : "",
-    ``,
-    `Generate compelling presentation slides from this content.`,
   ]
-    .filter(Boolean)
+    .filter((line) => line !== undefined)
     .join("\n");
 
-  const response = await openai.chat.completions.create({
-    model: MODEL,
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ],
-    temperature: 0.7,
-    response_format: { type: "json_object" },
-    max_tokens: 3000,
-  });
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-goog-api-key": GEMINI_API_KEY,
+      },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 4096,
+          responseMimeType: "application/json",
+        },
+      }),
+    }
+  );
 
-  const raw = response.choices[0]?.message?.content;
-  if (!raw) throw new Error("No response from AI");
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`Gemini API error ${response.status}: ${err}`);
+  }
+
+  const data = await response.json();
+  const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+  if (!raw) throw new Error("No response from Gemini");
 
   let parsed: GeneratedPresentation;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new Error("Failed to parse AI response as JSON");
+    // Strip markdown code fences if model ignored the instruction
+    const cleaned = raw.replace(/^```(?:json)?\n?/i, "").replace(/\n?```$/i, "").trim();
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch {
+      throw new Error("Failed to parse Gemini response as JSON");
+    }
   }
 
   // Ensure all slides have IDs
